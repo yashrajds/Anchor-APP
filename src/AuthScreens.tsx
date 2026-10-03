@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from './lib/AuthContext'
 import { auth } from './lib/firebase'
-import { confirmPasswordReset } from 'firebase/auth'
+import { confirmPasswordReset, sendEmailVerification } from 'firebase/auth'
 import { C } from './prefs'
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
@@ -212,6 +212,23 @@ type AuthScreen = 'login' | 'signup' | 'forgot'
 
 function VerificationRequired({ email }: { email?: string }) {
   const { signOut } = useAuth()
+  const [sending, setSending] = useState(false)
+  const [message, setMessage] = useState('')
+
+  const resend = async () => {
+    const user = auth.currentUser
+    if (!user) return
+    setSending(true)
+    try {
+      await sendEmailVerification(user, { url: `${window.location.origin}/` })
+      setMessage('Verification email sent again. Check spam too.')
+    } catch (e: any) {
+      setMessage(e?.message || 'Could not resend email.')
+    } finally {
+      setSending(false)
+    }
+  }
+
   return (
     <AuthShell>
       <div className="rounded-3xl p-6" style={{ background: C.card }}>
@@ -219,6 +236,9 @@ function VerificationRequired({ email }: { email?: string }) {
         <p className="text-sm mb-5" style={{ color: C.textSec }}>
           We sent a verification link to {email || 'your email'}. Please verify it to continue.
         </p>
+        {message && <p className="text-xs mb-4" style={{ color: C.amber }}>{message}</p>}
+        <button onClick={resend} disabled={sending} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
+          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : 'Resend verification email'}</button>
         <button onClick={() => location.reload()} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
           style={{ background: C.amber, color: C.onAccent }}>I have verified</button>
         <button onClick={signOut} className="w-full py-2.5 rounded-xl text-sm font-medium"
