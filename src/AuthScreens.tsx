@@ -2,7 +2,6 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { useAuth } from './lib/AuthContext'
 import { auth } from './lib/firebase'
 import { confirmPasswordReset } from 'firebase/auth'
-import { verifyOtp, requestOtp, isOtpVerified, markOtpVerified } from './lib/otp'
 import { C } from './prefs'
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
@@ -65,8 +64,8 @@ function SuccessMsg({ msg }: { msg: string }) {
 // ─── Login Screen ─────────────────────────────────────────────────────────────
 function LoginForm({ onSignUp, onForgot }: { onSignUp: () => void; onForgot: () => void }) {
   const { signIn, signInAsGuest } = useAuth()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [token, setToken] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -74,7 +73,7 @@ function LoginForm({ onSignUp, onForgot }: { onSignUp: () => void; onForgot: () 
     e.preventDefault()
     setError('')
     setLoading(true)
-    const { error } = await signIn(email, password)
+    const { error } = await signIn(name, token)
     setLoading(false)
     if (error) setError(error.message)
   }
@@ -84,9 +83,9 @@ function LoginForm({ onSignUp, onForgot }: { onSignUp: () => void; onForgot: () 
       <form onSubmit={submit} className="rounded-3xl p-6" style={{ background: C.card }}>
         <h1 className="font-serif text-2xl mb-5" style={{ color: C.textPri }}>Sign in</h1>
         <ErrorMsg error={error} />
-        <AuthInput label="Email" type="email" value={email} onChange={setEmail} autoFocus />
-        <AuthInput label="Password" type="password" value={password} onChange={setPassword} />
-        <button type="button" onClick={onForgot} className="text-xs mb-4 block" style={{ color: C.amber }}>Forgot password?</button>
+        <AuthInput label="Name" value={name} onChange={setName} autoFocus placeholder="Your account name" />
+        <AuthInput label="Token" type="password" value={token} onChange={setToken} placeholder="Generated token" />
+        
         <AuthBtn loading={loading}>Sign in</AuthBtn>
         <div className="relative my-4 flex items-center justify-center">
           <div className="absolute inset-0 flex items-center"><div className="w-full border-t" style={{ borderColor: 'color-mix(in srgb, var(--text) 10%, transparent)' }} /></div>
@@ -113,23 +112,20 @@ function LoginForm({ onSignUp, onForgot }: { onSignUp: () => void; onForgot: () 
 function SignUpForm({ onSignIn }: { onSignIn: () => void }) {
   const { signUp } = useAuth()
   const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState('')
+  const [token, setToken] = useState('')
 
   const submit = async (e: FormEvent) => {
     e.preventDefault()
-    if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
     setError('')
     setLoading(true)
-    const { error } = await signUp(email, password, name)
+    const { error, token: t } = await signUp(name)
     setLoading(false)
     if (error) {
       setError(error.message)
     } else {
-      setSuccess('Account created! Check your email for the 6-digit verification code.')
+      setToken(t || '')
     }
   }
 
@@ -138,18 +134,19 @@ function SignUpForm({ onSignIn }: { onSignIn: () => void }) {
       <form onSubmit={submit} className="rounded-3xl p-6" style={{ background: C.card }}>
         <h1 className="font-serif text-2xl mb-5" style={{ color: C.textPri }}>Create account</h1>
         <ErrorMsg error={error} />
-        <SuccessMsg msg={success} />
-        {!success && (
+        {!token && (
           <>
             <AuthInput label="Name" value={name} onChange={setName} placeholder="Your name" autoFocus />
-            <AuthInput label="Email" type="email" value={email} onChange={setEmail} />
-            <AuthInput label="Password" type="password" value={password} onChange={setPassword} placeholder="Min. 6 characters" />
             <AuthBtn loading={loading}>Create account</AuthBtn>
           </>
         )}
-        {success && (
-          <button onClick={onSignIn} className="w-full py-2.5 rounded-xl text-sm font-medium mt-1"
-            style={{ background: C.amber, color: C.onAccent }}>Back to sign in</button>
+        {token && (
+          <div>
+            <p className="text-sm mb-3" style={{ color: C.textSec }}>Account created. Save this token to log in next time:</p>
+            <p className="font-mono text-lg p-3 rounded-xl" style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.amber }}>{token}</p>
+            <button onClick={onSignIn} className="w-full py-2.5 rounded-xl text-sm font-medium mt-4"
+              style={{ background: C.amber, color: C.onAccent }}>Back to sign in</button>
+          </div>
         )}
       </form>
       <p className="text-center text-sm mt-5" style={{ color: C.textSec }}>
@@ -211,64 +208,6 @@ function AuthLoading() {
 // ─── Gate (wraps protected content) ──────────────────────────────────────────
 type AuthScreen = 'login' | 'signup' | 'forgot'
 
-function EmailVerificationRequired({ email, uid }: { email?: string; uid?: string }) {
-  const { signOut } = useAuth()
-  const [code, setCode] = useState('')
-  const [sending, setSending] = useState(false)
-  const [message, setMessage] = useState('')
-  const [cooldown, setCooldown] = useState(0)
-
-  useEffect(() => {
-    if (cooldown <= 0) return
-    const t = setTimeout(() => setCooldown(s => s - 1), 1000)
-    return () => clearTimeout(t)
-  }, [cooldown])
-
-  const resend = async () => {
-    if (!email || !uid) return
-    setSending(true)
-    try {
-      await requestOtp(email, uid)
-      setMessage('Verification code sent again. Check spam too.')
-      setCooldown(60)
-    } catch (e: any) {
-      setMessage(e?.message || 'Could not resend code.')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const verify = async () => {
-    if (!uid) return
-    try {
-      await verifyOtp(uid, code)
-      markOtpVerified(uid)
-      location.reload()
-    } catch (e: any) {
-      setMessage(e?.message || 'Could not verify code.')
-    }
-  }
-
-  return (
-    <AuthShell>
-      <div className="rounded-3xl p-6" style={{ background: C.card }}>
-        <h1 className="font-serif text-2xl mb-3" style={{ color: C.textPri }}>Verify your email</h1>
-        <p className="text-sm mb-5" style={{ color: C.textSec }}>
-          Enter the 6-digit code sent to {email || 'your email'}.
-        </p>
-        <AuthInput label="Verification code" type="text" value={code} onChange={setCode} placeholder="123456" />
-        {message && <p className="text-xs mb-4" style={{ color: C.amber }}>{message}</p>}
-        <button onClick={verify} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-          style={{ background: C.amber, color: C.onAccent }}>Verify</button>
-        <button onClick={resend} disabled={sending || cooldown > 0} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}</button>
-        <button onClick={signOut} className="w-full py-2.5 rounded-xl text-sm font-medium"
-          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>Sign out</button>
-      </div>
-    </AuthShell>
-  )
-}
-
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth()
   const [screen, setScreen] = useState<AuthScreen>('login')
@@ -277,11 +216,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const isReset = new URLSearchParams(window.location.search).get('mode') === 'resetPassword'
 
   if (status === 'loading') return <AuthLoading />
-  if (status === 'authenticated') {
-    const user = auth.currentUser
-    if (user && !isOtpVerified(user.uid)) return <EmailVerificationRequired email={user.email ?? ''} uid={user.uid} />
-    return <>{children}</>
-  }
+  if (status === 'authenticated') return <>{children}</>
 
   // Show reset password form if coming from email link
   if (isReset) return <ResetPasswordForm />

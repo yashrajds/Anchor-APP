@@ -20,7 +20,6 @@ import {
 } from 'firebase/auth'
 import { doc, setDoc } from 'firebase/firestore'
 import { auth as firebaseAuth, db } from './firebase'
-import { requestOtp } from './otp'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
@@ -42,8 +41,8 @@ type AuthCtx = {
   user: User | null
   session: null
   status: AuthStatus
-  signUp: (email: string, password: string, name: string) => Promise<{ error: AuthError | null }>
-  signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
+  signUp: (name: string) => Promise<{ error: AuthError | null; token?: string }>
+  signIn: (name: string, token: string) => Promise<{ error: AuthError | null }>
   signInAsGuest: () => void
   signOut: () => Promise<void>
   resetPassword: (email: string) => Promise<{ error: AuthError | null }>
@@ -76,29 +75,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe
   }, [])
 
-  const signUp = useCallback(async (email: string, password: string, name: string) => {
+  const signUp = useCallback(async (name: string): Promise<{ error: AuthError | null; token?: string }> => {
     localStorage.removeItem(GUEST_KEY)
     try {
-      const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+      const clean = name.toLowerCase().replace(/[^a-z0-9_-]/g, '')
+      if (!clean) throw new Error('Use a valid name.')
+      const email = `${clean}@anchor.local`
+      const token = Math.random().toString(36).slice(2, 10)
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, email, token)
       await updateProfile(cred.user, { displayName: name })
-      await requestOtp(email, cred.user.uid)
       await setDoc(doc(db, 'profiles', cred.user.uid), {
         id: cred.user.uid,
         user_id: cred.user.uid,
         name,
         email,
+        token_email: email,
         joined: new Date().toISOString().slice(0, 10),
       }, { merge: true })
-      return { error: null }
+      return { error: null, token }
     } catch (error) {
       return { error: error as Error }
     }
   }, [])
 
-  const signIn = useCallback(async (email: string, password: string) => {
+  const signIn = useCallback(async (name: string, token: string) => {
     localStorage.removeItem(GUEST_KEY)
     try {
-      await signInWithEmailAndPassword(firebaseAuth, email, password)
+      const clean = name.toLowerCase().replace(/[^a-z0-9_-]/g, '')
+      const email = `${clean}@anchor.local`
+      await signInWithEmailAndPassword(firebaseAuth, email, token)
       return { error: null }
     } catch (error) {
       return { error: error as Error }
