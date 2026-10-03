@@ -24,6 +24,45 @@ async function fetchSchemas() {
   return out
 }
 
+export function AdminGate() {
+  const [input, setInput] = React.useState('')
+  const [unlocked, setUnlocked] = React.useState(false)
+  const [error, setError] = React.useState('')
+
+  if (unlocked) return <AdminPage />
+
+  const unlock = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (input === 'j9nj71fkds') {
+      setUnlocked(true)
+      setError('')
+    } else {
+      setError('Incorrect password.')
+    }
+  }
+
+  return (
+    <div className="min-h-dvh flex items-center justify-center p-6" style={{ background: C.bg }}>
+      <form onSubmit={unlock} className="w-full max-w-sm rounded-3xl p-6" style={{ background: C.card }}>
+        <h1 className="font-serif text-2xl mb-2" style={{ color: C.textPri }}>Admin access</h1>
+        <p className="text-sm mb-5" style={{ color: C.textSec }}>Enter the admin password to continue.</p>
+        {error && <p className="text-xs mb-3" style={{ color: C.coral }}>{error}</p>}
+        <input
+          type="password"
+          className="field w-full mb-4"
+          placeholder="Password"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          autoFocus
+        />
+        <button className="w-full py-2.5 rounded-xl text-sm font-medium" style={{ background: C.amber, color: C.onAccent }}>
+          Unlock
+        </button>
+      </form>
+    </div>
+  )
+}
+
 export function AdminPage() {
   const errors = getErrorLog()
   const [schemas, setSchemas] = React.useState<Record<string, any> | null>(null)
