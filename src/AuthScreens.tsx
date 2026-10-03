@@ -3,7 +3,6 @@ import { useAuth } from './lib/AuthContext'
 import { auth } from './lib/firebase'
 import { confirmPasswordReset } from 'firebase/auth'
 import { verifyOtp, requestOtp, isOtpVerified, markOtpVerified } from './lib/otp'
-import { requestPhoneOtp, confirmPhoneOtp } from './lib/phone'
 import { C } from './prefs'
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
@@ -214,12 +213,10 @@ type AuthScreen = 'login' | 'signup' | 'forgot'
 
 function EmailVerificationRequired({ email, uid }: { email?: string; uid?: string }) {
   const { signOut } = useAuth()
-  const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
   const [cooldown, setCooldown] = useState(0)
-  const [confirmationResult, setConfirmationResult] = useState<any>(null)
 
   useEffect(() => {
     if (cooldown <= 0) return
@@ -227,28 +224,24 @@ function EmailVerificationRequired({ email, uid }: { email?: string; uid?: strin
     return () => clearTimeout(t)
   }, [cooldown])
 
-  const sendCode = async () => {
+  const resend = async () => {
+    if (!email || !uid) return
     setSending(true)
     try {
-      const cr = await requestPhoneOtp(phone.trim())
-      setConfirmationResult(cr)
-      setMessage('OTP sent. Enter the code from your SMS.')
+      await requestOtp(email, uid)
+      setMessage('Verification code sent again. Check spam too.')
       setCooldown(60)
     } catch (e: any) {
-      setMessage(e?.message || 'Could not send OTP.')
+      setMessage(e?.message || 'Could not resend code.')
     } finally {
       setSending(false)
     }
   }
 
-  const resend = async () => {
-    await sendCode()
-  }
-
   const verify = async () => {
-    if (!confirmationResult || !uid) return
+    if (!uid) return
     try {
-      await confirmPhoneOtp(confirmationResult, code)
+      await verifyOtp(uid, code)
       markOtpVerified(uid)
       location.reload()
     } catch (e: any) {
@@ -259,26 +252,16 @@ function EmailVerificationRequired({ email, uid }: { email?: string; uid?: strin
   return (
     <AuthShell>
       <div className="rounded-3xl p-6" style={{ background: C.card }}>
-        <h1 className="font-serif text-2xl mb-3" style={{ color: C.textPri }}>Verify your phone</h1>
+        <h1 className="font-serif text-2xl mb-3" style={{ color: C.textPri }}>Verify your email</h1>
         <p className="text-sm mb-5" style={{ color: C.textSec }}>
-          Enter your phone number to receive a Firebase OTP SMS.
+          Enter the 6-digit code sent to {email || 'your email'}.
         </p>
-        <AuthInput label="Phone number" type="tel" value={phone} onChange={setPhone} placeholder="+911234567890" />
-        {confirmationResult && (
-          <AuthInput label="Verification code" type="text" value={code} onChange={setCode} placeholder="123456" />
-        )}
+        <AuthInput label="Verification code" type="text" value={code} onChange={setCode} placeholder="123456" />
         {message && <p className="text-xs mb-4" style={{ color: C.amber }}>{message}</p>}
-        <div id="recaptcha-container" />
-        {!confirmationResult && (
-          <button onClick={sendCode} disabled={sending || !phone.trim()} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-            style={{ background: C.amber, color: C.onAccent }}>{sending ? 'Sending…' : 'Send SMS OTP'}</button>
-        )}
-        {confirmationResult && (
-          <button onClick={verify} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-            style={{ background: C.amber, color: C.onAccent }}>Verify</button>
-        )}
+        <button onClick={verify} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
+          style={{ background: C.amber, color: C.onAccent }}>Verify</button>
         <button onClick={resend} disabled={sending || cooldown > 0} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend OTP'}</button>
+          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}</button>
         <button onClick={signOut} className="w-full py-2.5 rounded-xl text-sm font-medium"
           style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>Sign out</button>
       </div>
