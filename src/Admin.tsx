@@ -1,16 +1,22 @@
 import React from 'react'
 import { getErrorLog, clearErrorLog } from './lib/errorlog'
 import { C } from './prefs'
-import { collection, getDocs, limit, query } from 'firebase/firestore'
-import { db } from './lib/firebase'
+import { collection, getDocs, limit, query, where } from 'firebase/firestore'
+import { db, auth } from './lib/firebase'
 
 const COLLECTIONS = ['profiles', 'user_preferences', 'daily_records', 'journal_entries', 'habits', 'habit_completions', 'email_verifications']
 
 async function fetchSchemas() {
   const out: Record<string, { fields: string[]; sample: any; error?: string }> = {}
+  const uid = auth.currentUser?.uid
+  if (!uid) {
+    for (const col of COLLECTIONS) out[col] = { fields: [], sample: null, error: 'Sign in to the app first.' }
+    return out
+  }
+
   for (const col of COLLECTIONS) {
     try {
-      const snap = await getDocs(query(collection(db, col), limit(1)))
+      const snap = await getDocs(query(collection(db, col), where('user_id', '==', uid), limit(1)))
       if (snap.empty) {
         out[col] = { fields: [], sample: null }
       } else {
