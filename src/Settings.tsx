@@ -1,12 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { C, THEMES, usePrefs, firstName, type Prefs } from './prefs'
 import { useRecords } from './records'
-import { supabase } from './lib/supabase'
+import { getAuth, reauthenticateWithCredential, EmailAuthProvider, updatePassword } from 'firebase/auth'
+import { auth } from './lib/firebase'
+import { deleteUserData } from './lib/firestore'
 
 const SUPPORT_EMAIL = 'support@anchorapp.example'
 const LEGAL: [string, string[]] = ['Terms & privacy', [
   'Anchor is a wellbeing companion for students. It is not a medical service and does not diagnose or treat.',
-  'Your data is stored securely in Supabase and is private to your account. We do not sell or share it.',
+  'Your data is stored securely in Firebase and is private to your account. We do not sell or share it.',
   'Feedback and bug reports open your email app with a draft you can review first.',
   'If you are in crisis or in danger, call or text 988 or your local emergency number.',
 ]]
@@ -108,7 +110,7 @@ const Btn = ({ children, onClick, danger, disabled, ghost }: {
   </button>
 )
 
-// ─── Change Password via Supabase ─────────────────────────────────────────────
+// ─── Change Password via Firebase ─────────────────────────────────────────────
 function ChangePasswordModal({ onClose, toast }: { onClose: () => void; toast: (m: string) => void }) {
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -122,14 +124,19 @@ function ChangePasswordModal({ onClose, toast }: { onClose: () => void; toast: (
     setErr('')
     setLoading(true)
     // Re-authenticate with current password first
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = auth.currentUser
     if (!user?.email) { setErr('Could not verify identity.'); setLoading(false); return }
-    const { error: signInErr } = await supabase.auth.signInWithPassword({ email: user.email, password: current })
-    if (signInErr) { setErr('Current password is incorrect.'); setLoading(false); return }
-    const { error } = await supabase.auth.updateUser({ password: next })
-    setLoading(false)
-    if (error) setErr(error.message)
-    else { toast('Password changed'); onClose() }
+    try {
+      const credential = EmailAuthProvider.credential(user.email, current)
+      await reauthenticateWithCredential(user, credential)
+      await updatePassword(user, next)
+      toast('Password changed')
+      onClose()
+    } catch (e: any) {
+      setErr(e.message ?? 'Could not update password.')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -233,16 +240,9 @@ export function SettingsPage({ onBack, onSignOut }: { onBack: () => void; onSign
 
   const deleteAccount = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user && user.id !== 'guest-user') {
-        await Promise.allSettled([
-          supabase.from('profiles').delete().eq('id', user.id),
-          supabase.from('user_preferences').delete().eq('user_id', user.id),
-          supabase.from('daily_records').delete().eq('user_id', user.id),
-          supabase.from('journal_entries').delete().eq('user_id', user.id),
-          supabase.from('habits').delete().eq('user_id', user.id),
-          supabase.from('habit_completions').delete().eq('user_id', user.id),
-        ])
+      const user = auth.currentUser
+      if (user && user.uid !== 'guest-user') {
+        await deleteUserData(user.uid)
       }
     } catch {}
     localStorage.clear()

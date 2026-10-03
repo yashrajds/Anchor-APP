@@ -6,14 +6,27 @@ import {
   useCallback,
   type ReactNode,
 } from 'react'
-import type { User, Session, AuthError } from '@supabase/supabase-js'
-import { supabase } from './supabase'
+import {
+  getAuth,
+  onAuthStateChanged,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  sendPasswordResetEmail,
+  updatePassword as firebaseUpdatePassword,
+  updateProfile,
+  type User,
+  type UserCredential,
+} from 'firebase/auth'
+import { doc, setDoc } from 'firebase/firestore'
+import { auth as firebaseAuth, db } from './firebase'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type AuthStatus = 'loading' | 'authenticated' | 'unauthenticated'
 
 const GUEST_KEY = 'anchor.auth.guest'
 const GUEST_USER = {
+  uid: 'guest-user',
   id: 'guest-user',
   email: 'guest@anchorapp.example',
   user_metadata: { name: 'Alex' },
@@ -22,9 +35,11 @@ const GUEST_USER = {
   app_metadata: {},
 } as unknown as User
 
+type AuthError = Error
+
 type AuthCtx = {
   user: User | null
-  session: Session | null
+  session: null
   status: AuthStatus
   signUp: (email: string, password: string, name: string) => Promise<{ error: AuthError | null }>
   signIn: (email: string, password: string) => Promise<{ error: AuthError | null }>
@@ -41,7 +56,6 @@ export const useAuth = () => useContext(AuthContext)
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
   const [status, setStatus] = useState<AuthStatus>('loading')
 
   useEffect(() => {
@@ -52,59 +66,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(
-      ({ data: { session } }) => {
-        setSession(session)
-        setUser(session?.user ?? null)
-        setStatus(session ? 'authenticated' : 'unauthenticated')
-      },
-      () => {
-        setStatus('unauthenticated')
-      },
-    )
+    const unsubscribe = onAuthStateChanged(firebaseAuth, user => {
+      if (localStorage.getItem(GUEST_KEY) === 'true') return
+      setUser(user)
+      setStatus(user ? 'authenticated' : 'unauthenticated')
+    })
 
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
-        if (localStorage.getItem(GUEST_KEY) === 'true') return
-        setSession(session)
-        setUser(session?.user ?? null)
-        setStatus(session ? 'authenticated' : 'unauthenticated')
-      },
-    )
-
-    return () => subscription.unsubscribe()
+    return unsubscribe
   }, [])
 
   const signUp = useCallback(async (email: string, password: string, name: string) => {
     localStorage.removeItem(GUEST_KEY)
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name },
-        emailRedirectTo: `${window.location.origin}/`,
-      },
-    })
-
-    // Create profile record on signup
-    if (data.user && !error) {
-      await supabase.from('profiles').upsert({
-        id: data.user.id,
+    try {
+      const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password)
+      await updateProfile(cred.user, { displayName: name })
+      await setDoc(doc(db, 'profiles', cred.user.uid), {
+        id: cred.user.uid,
         name,
         email,
         joined: new Date().toISOString().slice(0, 10),
-      })
+      }, { merge: true })
+      return { error: null }
+    } catch (error) {
+      return { error: error as Error }
     }
-
-    return { error }
   }, [])
 
   const signIn = useCallback(async (email: string, password: string) => {
     localStorage.removeItem(GUEST_KEY)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    return { error }
+    try {
+      await signInWithEmailAndPassword(firebaseAuth, email, password)
+      return { error: null }
+    } catch (error) {
+      return { error: error as Error }
+    }
   }, [])
 
   const signInAsGuest = useCallback(() => {
@@ -116,27 +111,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signOut = useCallback(async () => {
     localStorage.removeItem(GUEST_KEY)
     try {
-      await supabase.auth.signOut()
+      await firebaseSignOut(firebaseAuth)
     } catch {}
     setUser(null)
-    setSession(null)
     setStatus('unauthenticated')
   }, [])
 
   const resetPassword = useCallback(async (email: string) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/?reset=true`,
-    })
-    return { error }
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email)
+      return { error: null }
+    } catch (error) {
+      return { error: error as Error }
+    }
   }, [])
 
   const updatePassword = useCallback(async (password: string) => {
-    const { error } = await supabase.auth.updateUser({ password })
-    return { error }
+    try {
+      const user = firebaseAuth.currentUser
+      if (!user) return { error: new Error('Not signed in') }
+      await firebaseUpdatePassword(user, password)
+      return { error: null }
+    } catch (error) {
+      return { error: error as Error }
+    }
   }, [])
 
   return (
-    <AuthContext.Provider value={{ user, session, status, signUp, signIn, signInAsGuest, signOut, resetPassword, updatePassword }}>
+    <AuthContext.Provider value={{ user, session: null, status, signUp, signIn, signInAsGuest, signOut, resetPassword, updatePassword }}>
       {children}
     </AuthContext.Provider>
   )

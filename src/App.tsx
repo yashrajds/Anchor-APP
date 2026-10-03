@@ -809,7 +809,7 @@ function ChatPane() {
     setInput('')
     setTyping(true)
 
-    anchorReply(nextMsgs, t)
+    anchorReply(msgs, t)
       .then(text => {
         setMsgs(m => [...m, { role: 'ai', text }])
       })

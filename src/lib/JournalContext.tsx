@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { supabase } from './supabase'
 import { useAuth } from './AuthContext'
 import { dayKey } from '../records'
+import { fetchJournalEntries, saveJournalEntry, deleteJournalEntry } from './firestore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type JournalEntry = {
@@ -34,7 +34,7 @@ export const useJournal = () => useContext(JournalCtx)
 // ─── Provider ─────────────────────────────────────────────────────────────────
 export function JournalProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
-  const userId = user?.id ?? ''
+  const userId = user?.uid ?? ''
   const [entries, setEntries] = useState<JournalEntry[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -44,22 +44,13 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     setEntries(local)
     setLoading(true)
 
-    supabase
-      .from('journal_entries')
-      .select('*')
-      .eq('user_id', userId)
-      .order('created_at', { ascending: false })
-      .limit(30)
-      .then(
-        ({ data, error }) => {
-          if (!error && data && data.length > 0) {
-            setEntries(data as JournalEntry[])
-            saveLocalJournal(userId, data as JournalEntry[])
-          }
-          setLoading(false)
-        },
-        () => setLoading(false),
-      )
+    fetchJournalEntries(userId).then(data => {
+      if (data && data.length > 0) {
+        setEntries(data)
+        saveLocalJournal(userId, data)
+      }
+      setLoading(false)
+    }).catch(() => setLoading(false))
   }, [userId])
 
   const save = useCallback(async (content: string, mood: number | null) => {
@@ -85,41 +76,12 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
     })
 
     try {
-      const { data: existing } = await supabase
-        .from('journal_entries')
-        .select('id')
-        .eq('user_id', userId)
-        .eq('day', today)
-        .maybeSingle()
-
-      if (existing) {
-        const { data } = await supabase
-          .from('journal_entries')
-          .update({ content, mood, updated_at: nowIso })
-          .eq('id', existing.id)
-          .select()
-          .single()
-        if (data) {
-          setEntries(prev => {
-            const next = prev.map(e => e.id === existing.id || e.id === newEntry.id ? (data as JournalEntry) : e)
-            saveLocalJournal(userId, next)
-            return next
-          })
-        }
-      } else {
-        const { data } = await supabase
-          .from('journal_entries')
-          .insert({ user_id: userId, day: today, content, mood })
-          .select()
-          .single()
-        if (data) {
-          setEntries(prev => {
-            const next = prev.map(e => e.id === newEntry.id ? (data as JournalEntry) : e)
-            saveLocalJournal(userId, next)
-            return next
-          })
-        }
-      }
+      const result = await saveJournalEntry(userId, { day: today, content, mood })
+      setEntries(prev => {
+        const next = prev.map(e => e.id === newEntry.id ? { ...e, id: result.id, created_at: result.created_at, updated_at: result.updated_at } : e)
+        saveLocalJournal(userId, next)
+        return next
+      })
     } catch {}
   }, [userId])
 
@@ -131,7 +93,7 @@ export function JournalProvider({ children }: { children: React.ReactNode }) {
       return next
     })
     try {
-      await supabase.from('journal_entries').delete().eq('id', id).eq('user_id', userId)
+      await deleteJournalEntry(userId, id)
     } catch {}
   }, [userId])
 

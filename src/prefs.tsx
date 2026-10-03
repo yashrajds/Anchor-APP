@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { supabase } from './lib/supabase'
 import { useAuth } from './lib/AuthContext'
+import { getRemotePrefs, saveRemotePrefs } from './lib/firestore'
 
 // Colors resolve through CSS variables so a theme switch repaints the whole app.
 const mix = (v: string, pct: string, base = 'transparent') => `color-mix(in srgb, var(${v}) ${pct}, ${base})`
@@ -75,28 +75,25 @@ export const inQuiet = (hm: string, start: string, end: string) =>
 
 // ─── Supabase helpers ─────────────────────────────────────────────────────────
 async function fetchRemotePrefs(userId: string): Promise<Partial<Prefs>> {
-  const [profileRes, prefsRes] = await Promise.all([
-    supabase.from('profiles').select('name, email, photo_url, course, year, birthday, joined').eq('id', userId).single(),
-    supabase.from('user_preferences').select('*').eq('user_id', userId).single(),
-  ])
+  const { profile, prefs } = await getRemotePrefs(userId)
 
   const out: Partial<Prefs> = {}
 
-  if (profileRes.data) {
+  if (profile) {
     out.profile = {
-      name: profileRes.data.name || '',
-      email: profileRes.data.email || '',
-      photo: profileRes.data.photo_url || '',
+      name: profile.name || '',
+      email: profile.email || '',
+      photo: profile.photo_url || '',
       phone: '',
-      course: profileRes.data.course || '',
-      year: profileRes.data.year || '',
-      birthday: profileRes.data.birthday || '',
-      joined: profileRes.data.joined || new Date().toISOString().slice(0, 10),
+      course: profile.course || '',
+      year: profile.year || '',
+      birthday: profile.birthday || '',
+      joined: profile.joined || new Date().toISOString().slice(0, 10),
     }
   }
 
-  if (prefsRes.data) {
-    const p = prefsRes.data
+  if (prefs) {
+    const p = prefs
     out.theme = p.theme || 'forest'
     out.notif = {
       checkin: p.notif_checkin ?? false,
@@ -117,31 +114,27 @@ async function fetchRemotePrefs(userId: string): Promise<Partial<Prefs>> {
   return out
 }
 
-async function saveRemotePrefs(userId: string, prefs: Prefs) {
+async function saveRemotePrefsLocal(userId: string, prefs: Prefs) {
   const { profile: pf } = prefs
-  await Promise.all([
-    supabase.from('profiles').update({
-      name: pf.name,
-      photo_url: pf.photo || null,
-      course: pf.course || null,
-      year: pf.year || null,
-      birthday: pf.birthday || null,
-    }).eq('id', userId),
-    supabase.from('user_preferences').upsert({
-      user_id: userId,
-      theme: prefs.theme,
-      notif_checkin: prefs.notif.checkin,
-      notif_checkin_time: prefs.notif.checkinTime,
-      notif_streak: prefs.notif.streak,
-      notif_weekly: prefs.notif.weekly,
-      notif_quiet: prefs.notif.quiet,
-      notif_quiet_start: prefs.notif.quietStart,
-      notif_quiet_end: prefs.notif.quietEnd,
-      a11y_text_size: prefs.a11y.textSize,
-      a11y_reduce_motion: prefs.a11y.reduceMotion,
-      a11y_contrast: prefs.a11y.contrast,
-    }, { onConflict: 'user_id' }),
-  ])
+  await saveRemotePrefs(userId, {
+    name: pf.name,
+    photo_url: pf.photo || null,
+    course: pf.course || null,
+    year: pf.year || null,
+    birthday: pf.birthday || null,
+  }, {
+    theme: prefs.theme,
+    notif_checkin: prefs.notif.checkin,
+    notif_checkin_time: prefs.notif.checkinTime,
+    notif_streak: prefs.notif.streak,
+    notif_weekly: prefs.notif.weekly,
+    notif_quiet: prefs.notif.quiet,
+    notif_quiet_start: prefs.notif.quietStart,
+    notif_quiet_end: prefs.notif.quietEnd,
+    a11y_text_size: prefs.a11y.textSize,
+    a11y_reduce_motion: prefs.a11y.reduceMotion,
+    a11y_contrast: prefs.a11y.contrast,
+  })
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -152,7 +145,7 @@ export const firstName = (p: Prefs) => p.profile.name.trim().split(/\s+/)[0] || 
 
 export function PrefsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
-  const userId = user?.id ?? ''
+  const userId = user?.uid ?? ''
   const [prefs, setPrefs] = useState(loadLocal)
   const [syncing, setSyncing] = useState(false)
   const latest = useRef(prefs)
@@ -208,7 +201,7 @@ export function PrefsProvider({ children }: { children: React.ReactNode }) {
       // Debounced remote save
       clearTimeout(saveTimer.current)
       if (userId) {
-        saveTimer.current = window.setTimeout(() => saveRemotePrefs(userId, next), 1500)
+        saveTimer.current = window.setTimeout(() => saveRemotePrefsLocal(userId, next), 1500)
       }
       return next
     })

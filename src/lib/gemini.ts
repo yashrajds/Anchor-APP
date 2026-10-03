@@ -11,6 +11,10 @@ Do not diagnose or replace professional care. If the user seems in crisis, encou
 type ChatMessage = { role: 'user' | 'ai'; text: string }
 
 export async function anchorReply(history: ChatMessage[], userText: string): Promise<string> {
+  if (!GEMINI_API_KEY) {
+    return "I'm not configured with a Gemini API key right now. Please try again after the app updates."
+  }
+
   const contents = [
     { role: 'user', parts: [{ text: SYSTEM_PROMPT }] },
     { role: 'model', parts: [{ text: 'Got it. I am Anchor. How can I support you right now?' }] },

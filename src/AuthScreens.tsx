@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useAuth } from './lib/AuthContext'
+import { auth } from './lib/firebase'
+import { confirmPasswordReset } from 'firebase/auth'
 import { C } from './prefs'
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
@@ -213,7 +215,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const [screen, setScreen] = useState<AuthScreen>('login')
 
   // Check if we arrived from a password reset email
-  const isReset = new URLSearchParams(window.location.search).get('reset') === 'true'
+  const isReset = new URLSearchParams(window.location.search).get('mode') === 'resetPassword'
 
   if (status === 'loading') return <AuthLoading />
   if (status === 'authenticated') return <>{children}</>
@@ -228,7 +230,6 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
 // ─── Reset Password (after email redirect) ───────────────────────────────────
 function ResetPasswordForm() {
-  const { updatePassword } = useAuth()
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
@@ -241,13 +242,16 @@ function ResetPasswordForm() {
     if (password.length < 6) { setError('Password must be at least 6 characters.'); return }
     setError('')
     setLoading(true)
-    const { error } = await updatePassword(password)
-    setLoading(false)
-    if (error) setError(error.message)
-    else {
-      setSuccess('Password updated. Signing you in…')
-      // Remove ?reset=true from URL
+    const oobCode = new URLSearchParams(window.location.search).get('oobCode') ?? ''
+    try {
+      await confirmPasswordReset(auth, oobCode, password)
+      setSuccess('Password updated. You can sign in now.')
+      // Remove reset params from URL
       window.history.replaceState({}, '', '/')
+    } catch (e: any) {
+      setError(e.message ?? 'Could not update password.')
+    } finally {
+      setLoading(false)
     }
   }
 

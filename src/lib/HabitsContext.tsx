@@ -1,8 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react'
-import { supabase } from './supabase'
 import { useAuth } from './AuthContext'
 import { dayKey } from '../records'
 import { C } from '../prefs'
+import {
+  fetchHabits,
+  seedHabits,
+  addHabit as addHabitRemote,
+  removeHabit as removeHabitRemote,
+  fetchHabitCompletions,
+  setHabitCompletion,
+} from './firestore'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export type Habit = {
@@ -64,7 +71,7 @@ const saveLocalCompletions = (id: string, day: string, set: Set<string>) => {
 
 export function HabitsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
-  const userId = user?.id ?? ''
+  const userId = user?.uid ?? ''
   const today = dayKey()
   const [habits, setHabits] = useState<Habit[]>(() => userId ? loadLocalHabits(userId) : [])
   const [completions, setCompletions] = useState<Set<string>>(() => userId ? loadLocalCompletions(userId, today) : new Set())
@@ -79,33 +86,23 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     setLoading(true)
 
     Promise.all([
-      supabase.from('habits').select('*').eq('user_id', userId).order('sort_order'),
-      supabase.from('habit_completions').select('habit_id').eq('user_id', userId).eq('day', today),
-    ]).then(async ([habitsRes, completionsRes]) => {
-      let habitsData = (habitsRes.data as Habit[]) ?? []
+      fetchHabits(userId),
+      fetchHabitCompletions(userId, today),
+    ]).then(async ([habitsData, completionsData]) => {
+      let habitsArray: Habit[] = habitsData
 
-      // Seed defaults for new Supabase users if table is empty
-      if (habitsData.length === 0 && !habitsRes.error) {
-        const inserts = DEFAULT_HABITS.map((h, i) => ({
-          user_id: userId,
-          label: h.label,
-          color: h.color,
-          sort_order: i,
-        }))
-        const { data: seeded } = await supabase.from('habits').insert(inserts).select()
-        if (seeded && seeded.length > 0) habitsData = seeded as Habit[]
+      // Seed defaults for new users if table is empty
+      if (habitsArray.length === 0) {
+        habitsArray = await seedHabits(userId, DEFAULT_HABITS)
       }
 
-      if (habitsData.length > 0) {
-        setHabits(habitsData)
-        saveLocalHabits(userId, habitsData)
+      if (habitsArray.length > 0) {
+        setHabits(habitsArray)
+        saveLocalHabits(userId, habitsArray)
       }
 
-      if (completionsRes.data && !completionsRes.error) {
-        const remoteSet = new Set((completionsRes.data ?? []).map(r => r.habit_id))
-        setCompletions(remoteSet)
-        saveLocalCompletions(userId, today, remoteSet)
-      }
+      setCompletions(completionsData)
+      saveLocalCompletions(userId, today, completionsData)
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [userId, today])
@@ -123,11 +120,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     })
 
     try {
-      if (isDone) {
-        await supabase.from('habit_completions').delete().eq('habit_id', habitId).eq('user_id', userId).eq('day', today)
-      } else {
-        await supabase.from('habit_completions').insert({ habit_id: habitId, user_id: userId, day: today })
-      }
+      await setHabitCompletion(userId, habitId, today, !isDone)
     } catch {}
   }, [userId, completions, today])
 
@@ -143,16 +136,12 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     })
 
     try {
-      const { data } = await supabase.from('habits').insert({
-        user_id: userId, label, color, sort_order: habits.length,
-      }).select().single()
-      if (data) {
-        setHabits(prev => {
-          const next = prev.map(h => h.id === tempId ? (data as Habit) : h)
-          saveLocalHabits(userId, next)
-          return next
-        })
-      }
+      const data = await addHabitRemote(userId, label, color, habits.length)
+      setHabits(prev => {
+        const next = prev.map(h => h.id === tempId ? data : h)
+        saveLocalHabits(userId, next)
+        return next
+      })
     } catch {}
   }, [userId, habits.length])
 
@@ -171,7 +160,7 @@ export function HabitsProvider({ children }: { children: React.ReactNode }) {
     })
 
     try {
-      await supabase.from('habits').delete().eq('id', habitId).eq('user_id', userId)
+      await removeHabitRemote(userId, habitId)
     } catch {}
   }, [userId, today])
 

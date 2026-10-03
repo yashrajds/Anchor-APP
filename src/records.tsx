@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react'
-import { supabase } from './lib/supabase'
 import { useAuth } from './lib/AuthContext'
+import { fetchRecords, upsertRecord } from './lib/firestore'
 
 export type Day = { sleep?: number; mood?: number; focusSec?: number; calmSec?: number }
 type Days = Record<string, Day>
@@ -29,34 +29,6 @@ export function streakOf(days: Days) {
 export const fmtDur = (sec: number) =>
   sec < 60 ? `${Math.round(sec)}s` : sec < 3600 ? `${Math.round(sec / 60)} min` : `${Math.floor(sec / 3600)}h ${Math.round((sec % 3600) / 60)}m`
 
-// ─── Supabase helpers ─────────────────────────────────────────────────────────
-function rowToDay(row: { sleep: number | null; mood: number | null; focus_sec: number | null; calm_sec: number | null }): Day {
-  const d: Day = {}
-  if (row.sleep != null) d.sleep = row.sleep
-  if (row.mood != null) d.mood = row.mood
-  if (row.focus_sec != null) d.focusSec = row.focus_sec
-  if (row.calm_sec != null) d.calmSec = row.calm_sec
-  return d
-}
-
-async function fetchRecords(userId: string): Promise<Days> {
-  const { data, error } = await supabase
-    .from('daily_records')
-    .select('day, sleep, mood, focus_sec, calm_sec')
-    .eq('user_id', userId)
-    .gte('day', dayKey(ago(60))) // fetch last 60 days
-  if (error || !data) return {}
-  const days: Days = {}
-  for (const row of data) days[row.day] = rowToDay(row)
-  return days
-}
-
-async function upsertRecord(userId: string, day: string, patch: Partial<{ sleep: number; mood: number; focus_sec: number; calm_sec: number }>) {
-  await supabase.from('daily_records').upsert(
-    { user_id: userId, day, ...patch },
-    { onConflict: 'user_id,day' },
-  )
-}
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 type Ctx = {
@@ -72,7 +44,7 @@ export const useRecords = () => useContext(RecordsCtx)
 
 export function RecordsProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
-  const userId = user?.id ?? ''
+  const userId = user?.uid ?? ''
   const [days, setDays] = useState<Days>(() => userId ? loadLocal(userId) : {})
   const [syncing, setSyncing] = useState(false)
   const pendingSync = useRef<Record<string, Partial<{ sleep: number; mood: number; focus_sec: number; calm_sec: number }>>>({})
