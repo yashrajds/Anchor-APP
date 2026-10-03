@@ -104,6 +104,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const clean = name.toLowerCase().replace(/[^a-z0-9_-]/g, '')
       const email = `${clean}@anchor.local`
       await signInWithEmailAndPassword(firebaseAuth, email, token)
+      // Persist the sign-in name into the profile so Settings shows it
+      const user = firebaseAuth.currentUser
+      if (user) {
+        await updateProfile(user, { displayName: name }).catch(() => {})
+        await setDoc(doc(db, 'profiles', user.uid), {
+          id: user.uid,
+          user_id: user.uid,
+          name,
+          email: user.email,
+        }, { merge: true }).catch(() => {})
+      }
       return { error: null }
     } catch (error) {
       return { error: error as Error }
