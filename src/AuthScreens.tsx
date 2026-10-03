@@ -210,6 +210,24 @@ function AuthLoading() {
 // ─── Gate (wraps protected content) ──────────────────────────────────────────
 type AuthScreen = 'login' | 'signup' | 'forgot'
 
+function VerificationRequired({ email }: { email?: string }) {
+  const { signOut } = useAuth()
+  return (
+    <AuthShell>
+      <div className="rounded-3xl p-6" style={{ background: C.card }}>
+        <h1 className="font-serif text-2xl mb-3" style={{ color: C.textPri }}>Check your email</h1>
+        <p className="text-sm mb-5" style={{ color: C.textSec }}>
+          We sent a verification link to {email || 'your email'}. Please verify it to continue.
+        </p>
+        <button onClick={() => location.reload()} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
+          style={{ background: C.amber, color: C.onAccent }}>I have verified</button>
+        <button onClick={signOut} className="w-full py-2.5 rounded-xl text-sm font-medium"
+          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>Sign out</button>
+      </div>
+    </AuthShell>
+  )
+}
+
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const { status } = useAuth()
   const [screen, setScreen] = useState<AuthScreen>('login')
@@ -218,7 +236,11 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   const isReset = new URLSearchParams(window.location.search).get('mode') === 'resetPassword'
 
   if (status === 'loading') return <AuthLoading />
-  if (status === 'authenticated') return <>{children}</>
+  if (status === 'authenticated') {
+    const user = auth.currentUser
+    if (user && !user.emailVerified) return <VerificationRequired email={user.email ?? ''} />
+    return <>{children}</>
+  }
 
   // Show reset password form if coming from email link
   if (isReset) return <ResetPasswordForm />

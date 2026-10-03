@@ -13,6 +13,7 @@ import {
   signInWithEmailAndPassword,
   signOut as firebaseSignOut,
   sendPasswordResetEmail,
+  sendEmailVerification,
   updatePassword as firebaseUpdatePassword,
   updateProfile,
   type User,
@@ -80,6 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const cred = await createUserWithEmailAndPassword(firebaseAuth, email, password)
       await updateProfile(cred.user, { displayName: name })
+      await sendEmailVerification(cred.user, { url: `${window.location.origin}/` })
       await setDoc(doc(db, 'profiles', cred.user.uid), {
         id: cred.user.uid,
         user_id: cred.user.uid,

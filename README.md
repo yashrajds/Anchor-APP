@@ -1,16 +1,16 @@
 # Anchor — Student Wellbeing Companion
 
-Anchor is a thoughtful, full-stack wellbeing application built with **React 19**, **TypeScript**, **Tailwind CSS v4**, and **Supabase (PostgreSQL & Auth)**. It helps students track daily mood, habits, sleep, and focus time with actionable insights and strict data privacy.
+Anchor is a thoughtful, full-stack wellbeing application built with **React 19**, **TypeScript**, **Tailwind CSS v4**, and **Firebase (Authentication & Firestore)**. It helps students track daily mood, habits, sleep, and focus time with actionable insights and strict data privacy.
 
 ---
 
 ## Features
 
 - **Authentication & Security:**
-  - Supabase Auth: email signup, login, password reset, and session persistence.
+  - Firebase Auth: email signup, login, password reset, and session persistence.
   - "Explore as Guest" mode for instant local preview and evaluation.
-  - Strict PostgreSQL Row Level Security (RLS) guaranteeing users can only read and write their own data.
-  - Automated database trigger that provisions user profiles and starter habits on account creation.
+  - Strict Firestore Security Rules guaranteeing users can only read and write their own data.
+  - Firestore stores profiles, preferences, daily records, journal entries, and habits.
 - **Daily Check-ins & Records:**
   - Log daily mood and sleep ratings.
   - Track focus session minutes and calm/breathing cooldowns.
@@ -38,7 +38,7 @@ Anchor is a thoughtful, full-stack wellbeing application built with **React 19**
 - **Framework:** React 19 + TypeScript
 - **Bundler:** Vite 8
 - **Styling:** Tailwind CSS v4
-- **Database & Auth:** Supabase (PostgreSQL with RLS)
+- **Database & Auth:** Firebase (Authentication & Firestore)
 - **Deployment:** Vercel (SPA routing configured in `vercel.json`)
 
 ---
@@ -56,16 +56,16 @@ cd "Anchor APP"
 npm install
 ```
 
-### 2. Configure Supabase
+### 2. Configure Firebase
 
-1. Create a free project on [Supabase](https://supabase.com).
-2. In your Supabase dashboard, navigate to the **SQL Editor** (`/project/_/sql`).
-3. Open `supabase/schema.sql` from this repository, paste the entire script into the SQL Editor, and click **Run**.
-   - This creates all necessary tables (`profiles`, `user_preferences`, `daily_records`, `journal_entries`, `habits`, `habit_completions`).
-   - Enables Row Level Security (RLS) with secure user policies.
-   - Sets up the `on_auth_user_created` trigger for automated onboarding.
+1. Create a project at https://console.firebase.google.com.
+2. In Firebase, enable Email/Password auth and create a Firestore database.
+3. Use the Firebase CLI to deploy `firestore.rules`.
+   - Firestore collections: `profiles`, `user_preferences`, `daily_records`, `journal_entries`, `habits`, `habit_completions`.
+   - Firestore Rules restrict access to the signed-in user.
+   - The app seeds starter habits on first sign in.
 4. In your Supabase dashboard, go to **Project Settings** → **API**.
-5. Copy your **Project URL** and **anon public key**.
+5. Copy the web app config values.
 
 ### 3. Set Up Environment Variables
 
@@ -75,11 +75,11 @@ Copy `.env.example` to `.env.local`:
 cp .env.example .env.local
 ```
 
-Edit `.env.local` with your Supabase credentials:
+Edit `.env.local` with your Firebase web app config:
 
 ```env
-VITE_SUPABASE_URL=https://your-project-id.supabase.co
-VITE_SUPABASE_ANON_KEY=your-supabase-anon-key-here
+VITE_FIREBASE_API_KEY=your-api-key
+VITE_FIREBASE_PROJECT_ID=your-project-id
 ```
 
 > **Note:** If you run the application without setting environment variables, Anchor gracefully runs in **Guest / Local mode**, storing data safely in `localStorage` so you can still explore all screens.
@@ -139,16 +139,16 @@ When prompted:
 - Set up and deploy: **Yes**
 - Link to existing project: **No** (or link to existing)
 - Project name: `anchor-app`
-- In your Vercel project settings, add the `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` environment variables and trigger a redeploy.
+- In your Vercel project settings, add the Firebase environment variables from `.env.example` and trigger a redeploy.
 
-### Supabase Auth URL Configuration for Production
+### Firebase Auth domain configuration for production
 
 Once deployed to your Vercel domain (e.g. `https://anchor-app.vercel.app`):
 1. In your Supabase dashboard, go to **Authentication** → **URL Configuration**.
-2. Set **Site URL** to: `https://your-domain.vercel.app`
-3. Under **Redirect URLs**, add:
-   - `https://your-domain.vercel.app/**`
-   - `http://localhost:8443/**` (for local development)
+2. Add your Vercel domain to Authorized domains
+3. Add authorized redirect URLs for local development and production
+   - `https://your-domain.vercel.app`
+   - `http://localhost:8443` (for local development)
 
 ---
 
@@ -157,7 +157,7 @@ Once deployed to your Vercel domain (e.g. `https://anchor-app.vercel.app`):
 - [x] TypeScript compilation (`npx tsc --noEmit`) passes with 0 errors.
 - [x] Production build (`npm run build`) bundles cleanly into `dist/`.
 - [x] Client-side routing rewrite rules configured in `vercel.json`.
-- [x] RLS policies and database trigger written in `supabase/schema.sql`.
+- [x] Firestore rules written in `firestore.rules`.
 - [x] Environment variables template provided in `.env.example`.
 - [x] Real-time habit creation, completion toggle, and deletion.
 - [x] Real-time journal entry creation, persistence, and deletion.
