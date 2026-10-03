@@ -1,7 +1,8 @@
 import { useState, useEffect, type FormEvent } from 'react'
 import { useAuth } from './lib/AuthContext'
 import { auth } from './lib/firebase'
-import { confirmPasswordReset, sendEmailVerification } from 'firebase/auth'
+import { confirmPasswordReset } from 'firebase/auth'
+import { verifyOtp, requestOtp, isOtpVerified, markOtpVerified } from './lib/otp'
 import { C } from './prefs'
 
 // ─── Shared primitives ────────────────────────────────────────────────────────
@@ -128,7 +129,7 @@ function SignUpForm({ onSignIn }: { onSignIn: () => void }) {
     if (error) {
       setError(error.message)
     } else {
-      setSuccess('Account created! Check your email to verify your address, then sign in.')
+      setSuccess('Account created! Check your email for the 6-digit verification code.')
     }
   }
 
@@ -210,8 +211,9 @@ function AuthLoading() {
 // ─── Gate (wraps protected content) ──────────────────────────────────────────
 type AuthScreen = 'login' | 'signup' | 'forgot'
 
-function VerificationRequired({ email }: { email?: string }) {
+function EmailVerificationRequired({ email, uid }: { email?: string; uid?: string }) {
   const { signOut } = useAuth()
+  const [code, setCode] = useState('')
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
   const [cooldown, setCooldown] = useState(0)
@@ -223,32 +225,43 @@ function VerificationRequired({ email }: { email?: string }) {
   }, [cooldown])
 
   const resend = async () => {
-    const user = auth.currentUser
-    if (!user) return
+    if (!email || !uid) return
     setSending(true)
     try {
-      await sendEmailVerification(user)
-      setMessage('Verification email sent again. Check spam too.')
+      await requestOtp(email, uid)
+      setMessage('Verification code sent again. Check spam too.')
       setCooldown(60)
     } catch (e: any) {
-      setMessage(e?.message || 'Could not resend email.')
+      setMessage(e?.message || 'Could not resend code.')
     } finally {
       setSending(false)
+    }
+  }
+
+  const verify = async () => {
+    if (!uid) return
+    try {
+      await verifyOtp(uid, code)
+      markOtpVerified(uid)
+      location.reload()
+    } catch (e: any) {
+      setMessage(e?.message || 'Could not verify code.')
     }
   }
 
   return (
     <AuthShell>
       <div className="rounded-3xl p-6" style={{ background: C.card }}>
-        <h1 className="font-serif text-2xl mb-3" style={{ color: C.textPri }}>Check your email</h1>
+        <h1 className="font-serif text-2xl mb-3" style={{ color: C.textPri }}>Verify your email</h1>
         <p className="text-sm mb-5" style={{ color: C.textSec }}>
-          We sent a verification link to {email || 'your email'}. Please verify it to continue.
+          Enter the 6-digit code sent to {email || 'your email'}.
         </p>
+        <AuthInput label="Verification code" type="text" value={code} onChange={setCode} placeholder="123456" />
         {message && <p className="text-xs mb-4" style={{ color: C.amber }}>{message}</p>}
+        <button onClick={verify} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
+          style={{ background: C.amber, color: C.onAccent }}>Verify</button>
         <button onClick={resend} disabled={sending || cooldown > 0} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend verification email'}</button>
-        <button onClick={() => location.reload()} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-          style={{ background: C.amber, color: C.onAccent }}>I have verified</button>
+          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend code'}</button>
         <button onClick={signOut} className="w-full py-2.5 rounded-xl text-sm font-medium"
           style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>Sign out</button>
       </div>
@@ -266,7 +279,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
   if (status === 'loading') return <AuthLoading />
   if (status === 'authenticated') {
     const user = auth.currentUser
-    if (user && !user.emailVerified) return <VerificationRequired email={user.email ?? ''} />
+    if (user && !isOtpVerified(user.uid)) return <EmailVerificationRequired email={user.email ?? ''} uid={user.uid} />
     return <>{children}</>
   }
 
