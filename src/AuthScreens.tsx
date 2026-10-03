@@ -220,7 +220,7 @@ function VerificationRequired({ email }: { email?: string }) {
     if (!user) return
     setSending(true)
     try {
-      await sendEmailVerification(user, { url: `${window.location.origin}/` })
+      await sendEmailVerification(user)
       setMessage('Verification email sent again. Check spam too.')
     } catch (e: any) {
       setMessage(e?.message || 'Could not resend email.')
