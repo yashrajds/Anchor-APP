@@ -214,6 +214,13 @@ function VerificationRequired({ email }: { email?: string }) {
   const { signOut } = useAuth()
   const [sending, setSending] = useState(false)
   const [message, setMessage] = useState('')
+  const [cooldown, setCooldown] = useState(0)
+
+  useEffect(() => {
+    if (cooldown <= 0) return
+    const t = setTimeout(() => setCooldown(s => s - 1), 1000)
+    return () => clearTimeout(t)
+  }, [cooldown])
 
   const resend = async () => {
     const user = auth.currentUser
@@ -222,6 +229,7 @@ function VerificationRequired({ email }: { email?: string }) {
     try {
       await sendEmailVerification(user)
       setMessage('Verification email sent again. Check spam too.')
+      setCooldown(60)
     } catch (e: any) {
       setMessage(e?.message || 'Could not resend email.')
     } finally {
@@ -237,8 +245,8 @@ function VerificationRequired({ email }: { email?: string }) {
           We sent a verification link to {email || 'your email'}. Please verify it to continue.
         </p>
         {message && <p className="text-xs mb-4" style={{ color: C.amber }}>{message}</p>}
-        <button onClick={resend} disabled={sending} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
-          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : 'Resend verification email'}</button>
+        <button onClick={resend} disabled={sending || cooldown > 0} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
+          style={{ background: 'color-mix(in srgb, var(--text) 8%, transparent)', color: C.textPri }}>{sending ? 'Sending…' : cooldown > 0 ? `Resend in ${cooldown}s` : 'Resend verification email'}</button>
         <button onClick={() => location.reload()} className="w-full py-2.5 rounded-xl text-sm font-medium mb-3"
           style={{ background: C.amber, color: C.onAccent }}>I have verified</button>
         <button onClick={signOut} className="w-full py-2.5 rounded-xl text-sm font-medium"
