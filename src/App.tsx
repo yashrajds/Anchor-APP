@@ -8,6 +8,7 @@ import { AuthProvider } from './lib/AuthContext'
 import { AuthGate } from './AuthScreens'
 import { JournalProvider, useJournal } from './lib/JournalContext'
 import { HabitsProvider, useHabits } from './lib/HabitsContext'
+import { AdminPage } from './Admin'
 import { useAuth } from './lib/AuthContext'
 import { anchorReply } from './lib/gemini'
 
@@ -953,6 +954,7 @@ function Shell() {
 }
 
 export default function App() {
+  if (window.location.pathname.startsWith('/admin')) return <AdminPage />
   return (
     <AuthProvider>
       <AuthGate>

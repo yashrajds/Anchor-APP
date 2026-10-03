@@ -1,5 +1,6 @@
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 import { db } from './firebase'
+import { logError } from './errorlog'
 
 const OTP_SENDER_EMAIL = import.meta.env.VITE_OTP_SENDER_EMAIL as string
 const OTP_SENDER_NAME = (import.meta.env.VITE_OTP_SENDER_NAME as string) || 'Anchor'
@@ -55,7 +56,9 @@ export async function requestOtp(email: string, uid: string) {
   })
 
   if (!res.ok) {
-    throw new Error(`Brevo email failed: ${res.status} ${await res.text()}`)
+    const err = new Error(`Brevo email failed: ${res.status} ${await res.text()}`)
+    logError(err.message)
+    throw err
   }
 }
 
