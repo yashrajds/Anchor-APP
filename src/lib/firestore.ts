@@ -32,8 +32,8 @@ export async function getRemotePrefs(userId: string) {
 
 export async function saveRemotePrefs(userId: string, profile: any, prefs: any) {
   await Promise.all([
-    setDoc(doc(db, 'profiles', userId), profile, { merge: true }),
-    setDoc(doc(db, 'user_preferences', userId), prefs, { merge: true }),
+    setDoc(doc(db, 'profiles', userId), { user_id: userId, ...profile }, { merge: true }),
+    setDoc(doc(db, 'user_preferences', userId), { user_id: userId, ...prefs }, { merge: true }),
   ])
 }
 

@@ -82,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await updateProfile(cred.user, { displayName: name })
       await setDoc(doc(db, 'profiles', cred.user.uid), {
         id: cred.user.uid,
+        user_id: cred.user.uid,
         name,
         email,
         joined: new Date().toISOString().slice(0, 10),
