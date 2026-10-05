@@ -1,13 +1,13 @@
 import React from 'react'
 import { getErrorLog, clearErrorLog } from './lib/errorlog'
 import { C } from './prefs'
-const SCHEMAS: Record<string, string[]> = {
-  profiles: ['id', 'user_id', 'name', 'email', 'photo_url', 'course', 'year', 'birthday', 'joined'],
-  user_preferences: ['id', 'user_id', 'theme', 'notif_checkin', 'notif_checkin_time', 'notif_streak', 'notif_weekly', 'notif_quiet', 'notif_quiet_start', 'notif_quiet_end', 'a11y_text_size', 'a11y_reduce_motion', 'a11y_contrast'],
-  daily_records: ['id', 'user_id', 'day', 'sleep', 'mood', 'focus_sec', 'calm_sec', 'created_at', 'updated_at'],
-  journal_entries: ['id', 'user_id', 'day', 'content', 'mood', 'created_at', 'updated_at'],
-  habits: ['id', 'user_id', 'label', 'color', 'sort_order', 'created_at'],
-  habit_completions: ['id', 'habit_id', 'user_id', 'day', 'created_at'],
+const SCHEMAS: Record<string, string[][]> = {
+  profiles: [['id','string','User ID'], ['user_id','string','Owner ID'], ['name','string','Display name'], ['email','string','Login email'], ['photo_url','string | null','Avatar URL'], ['course','string | null','Course / major'], ['year','string | null','Year of study'], ['birthday','string | null','Birth date'], ['joined','string','Join date']],
+  user_preferences: [['id','string','Pref ID'], ['user_id','string','Owner ID'], ['theme','string','Selected theme'], ['notif_checkin','boolean','Check-in reminders'], ['notif_checkin_time','string','Check-in time'], ['notif_streak','boolean','Streak reminders'], ['notif_weekly','boolean','Weekly reminder'], ['notif_quiet','boolean','Quiet hours enabled'], ['notif_quiet_start','string','Quiet start'], ['notif_quiet_end','string','Quiet end'], ['a11y_text_size','string','Text size'], ['a11y_reduce_motion','boolean','Reduce motion'], ['a11y_contrast','boolean','High contrast']],
+  daily_records: [['id','string','Record ID'], ['user_id','string','Owner ID'], ['day','string','Date key'], ['sleep','number | null','Sleep rating'], ['mood','number | null','Mood rating'], ['focus_sec','number | null','Focus seconds'], ['calm_sec','number | null','Calm seconds'], ['created_at','string','Created at'], ['updated_at','string','Updated at']],
+  journal_entries: [['id','string','Entry ID'], ['user_id','string','Owner ID'], ['day','string','Date key'], ['content','string','Entry text'], ['mood','number | null','Mood'], ['created_at','string','Created at'], ['updated_at','string','Updated at']],
+  habits: [['id','string','Habit ID'], ['user_id','string','Owner ID'], ['label','string','Habit label'], ['color','string','Habit color'], ['sort_order','number','Display order'], ['created_at','string','Created at']],
+  habit_completions: [['id','string','Completion ID'], ['habit_id','string','Habit ID'], ['user_id','string','Owner ID'], ['day','string','Date key'], ['created_at','string','Created at']],
 }
 
 export function AdminGate() {
@@ -58,11 +58,26 @@ export function AdminPage() {
       <section className="mb-8">
         <h2 className="font-serif text-2xl mb-3">Firebase Schemas</h2>
         {Object.entries(SCHEMAS).map(([col, fields]) => (
-          <div key={col} className="rounded-2xl p-4 mb-3" style={{ background: C.card }}>
-            <h3 className="text-sm font-medium mb-2" style={{ color: C.amber }}>{col}</h3>
-            <p className="text-xs" style={{ color: C.textSec }}>
-              Fields: {fields.join(', ')}
-            </p>
+          <div key={col} className="rounded-2xl p-4 mb-4 overflow-x-auto" style={{ background: C.card }}>
+            <h3 className="text-sm font-medium mb-3 capitalize" style={{ color: C.amber }}>{col.replace('_', ' ')}</h3>
+            <table className="w-full text-sm border-collapse">
+              <thead>
+                <tr>
+                  <th className="text-left py-2 px-3" style={{ color: C.textMute, borderBottom: `1px solid ${C.cardBorder}` }}>Field</th>
+                  <th className="text-left py-2 px-3" style={{ color: C.textMute, borderBottom: `1px solid ${C.cardBorder}` }}>Type</th>
+                  <th className="text-left py-2 px-3" style={{ color: C.textMute, borderBottom: `1px solid ${C.cardBorder}` }}>Description</th>
+                </tr>
+              </thead>
+              <tbody>
+                {fields.map(([name, type, desc]) => (
+                  <tr key={name}>
+                    <td className="py-2 px-3" style={{ color: C.textPri }}>{name}</td>
+                    <td className="py-2 px-3" style={{ color: C.textSec }}>{type}</td>
+                    <td className="py-2 px-3" style={{ color: C.textSec }}>{desc}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ))}
       </section>
