@@ -1,13 +1,22 @@
 import React from 'react'
 import { getErrorLog, clearErrorLog } from './lib/errorlog'
 import { C } from './prefs'
-const SCHEMAS: Record<string, string[][]> = {
-  profiles: [['id','string','User ID'], ['user_id','string','Owner ID'], ['name','string','Display name'], ['email','string','Login email'], ['photo_url','string | null','Avatar URL'], ['course','string | null','Course / major'], ['year','string | null','Year of study'], ['birthday','string | null','Birth date'], ['joined','string','Join date']],
-  user_preferences: [['id','string','Pref ID'], ['user_id','string','Owner ID'], ['theme','string','Selected theme'], ['notif_checkin','boolean','Check-in reminders'], ['notif_checkin_time','string','Check-in time'], ['notif_streak','boolean','Streak reminders'], ['notif_weekly','boolean','Weekly reminder'], ['notif_quiet','boolean','Quiet hours enabled'], ['notif_quiet_start','string','Quiet start'], ['notif_quiet_end','string','Quiet end'], ['a11y_text_size','string','Text size'], ['a11y_reduce_motion','boolean','Reduce motion'], ['a11y_contrast','boolean','High contrast']],
-  daily_records: [['id','string','Record ID'], ['user_id','string','Owner ID'], ['day','string','Date key'], ['sleep','number | null','Sleep rating'], ['mood','number | null','Mood rating'], ['focus_sec','number | null','Focus seconds'], ['calm_sec','number | null','Calm seconds'], ['created_at','string','Created at'], ['updated_at','string','Updated at']],
-  journal_entries: [['id','string','Entry ID'], ['user_id','string','Owner ID'], ['day','string','Date key'], ['content','string','Entry text'], ['mood','number | null','Mood'], ['created_at','string','Created at'], ['updated_at','string','Updated at']],
-  habits: [['id','string','Habit ID'], ['user_id','string','Owner ID'], ['label','string','Habit label'], ['color','string','Habit color'], ['sort_order','number','Display order'], ['created_at','string','Created at']],
-  habit_completions: [['id','string','Completion ID'], ['habit_id','string','Habit ID'], ['user_id','string','Owner ID'], ['day','string','Date key'], ['created_at','string','Created at']],
+import { collection, getDocs, limit, query } from 'firebase/firestore'
+import { db } from './lib/firebase'
+
+const COLLECTIONS = ['profiles', 'user_preferences', 'daily_records', 'journal_entries', 'habits', 'habit_completions']
+
+type Doc = Record<string, any>
+
+async function fetchCollection(name: string): Promise<Doc[]> {
+  const snap = await getDocs(query(collection(db, name), limit(50)))
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }))
+}
+
+function KeysFor(docs: Doc[]): string[] {
+  const keys = new Set<string>()
+  docs.forEach(d => Object.keys(d).forEach(k => keys.add(k)))
+  return ['id', ...Array.from(keys).filter(k => k !== 'id')]
 }
 
 export function AdminGate() {
@@ -51,35 +60,63 @@ export function AdminGate() {
 
 export function AdminPage() {
   const errors = getErrorLog()
+  const [data, setData] = React.useState<Record<string, Doc[]>>({})
+  const [loading, setLoading] = React.useState(true)
+  const [error, setError] = React.useState('')
+
+  React.useEffect(() => {
+    Promise.all(COLLECTIONS.map(async c => [c, await fetchCollection(c)] as const))
+      .then(entries => {
+        const map: Record<string, Doc[]> = {}
+        entries.forEach(([name, docs]) => { map[name] = docs })
+        setData(map)
+      })
+      .catch(e => setError(e.message))
+      .finally(() => setLoading(false))
+  }, [])
+
   return (
     <div className="min-h-dvh p-6" style={{ background: C.bg, color: C.textPri }}>
-      <h1 className="font-serif text-3xl mb-4">Admin</h1>
+      <h1 className="font-serif text-3xl mb-2">Admin</h1>
+      <p className="text-sm mb-6" style={{ color: C.textSec }}>Real Firestore data for configured collections.</p>
 
       <section className="mb-8">
-        <h2 className="font-serif text-2xl mb-3">Firebase Schemas</h2>
-        {Object.entries(SCHEMAS).map(([col, fields]) => (
-          <div key={col} className="rounded-2xl p-4 mb-4 overflow-x-auto" style={{ background: C.card }}>
-            <h3 className="text-sm font-medium mb-3 capitalize" style={{ color: C.amber }}>{col.replace('_', ' ')}</h3>
-            <table className="w-full text-sm border-collapse">
-              <thead>
-                <tr>
-                  <th className="text-left py-2 px-3" style={{ color: C.textMute, borderBottom: `1px solid ${C.cardBorder}` }}>Field</th>
-                  <th className="text-left py-2 px-3" style={{ color: C.textMute, borderBottom: `1px solid ${C.cardBorder}` }}>Type</th>
-                  <th className="text-left py-2 px-3" style={{ color: C.textMute, borderBottom: `1px solid ${C.cardBorder}` }}>Description</th>
-                </tr>
-              </thead>
-              <tbody>
-                {fields.map(([name, type, desc]) => (
-                  <tr key={name}>
-                    <td className="py-2 px-3" style={{ color: C.textPri }}>{name}</td>
-                    <td className="py-2 px-3" style={{ color: C.textSec }}>{type}</td>
-                    <td className="py-2 px-3" style={{ color: C.textSec }}>{desc}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ))}
+        <h2 className="font-serif text-2xl mb-3">Database</h2>
+        {loading && <p style={{ color: C.textSec }}>Loading…</p>}
+        {error && <p style={{ color: C.coral }}>{error}</p>}
+        {!loading && !error && COLLECTIONS.map(name => {
+          const docs = data[name] || []
+          const keys = KeysFor(docs)
+          return (
+            <div key={name} className="rounded-2xl p-4 mb-4 overflow-x-auto" style={{ background: C.card }}>
+              <h3 className="text-sm font-medium mb-3 capitalize" style={{ color: C.amber }}>{name.replace('_', ' ')}</h3>
+              {docs.length === 0 ? (
+                <p className="text-xs" style={{ color: C.textMute }}>No documents found.</p>
+              ) : (
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr>
+                      {keys.map(k => (
+                        <th key={k} className="text-left py-2 px-3" style={{ color: C.textMute, borderBottom: `1px solid ${C.cardBorder}` }}>{k}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {docs.map((doc, i) => (
+                      <tr key={`${name}-${i}`}>
+                        {keys.map(k => (
+                          <td key={k} className="py-2 px-3" style={{ color: C.textSec }}>
+                            {typeof doc[k] === 'object' ? JSON.stringify(doc[k]) : String(doc[k] ?? '')}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )
+        })}
       </section>
 
       <section>

@@ -117,7 +117,7 @@ export function RecordsProvider({ children }: { children: React.ReactNode }) {
       })
     },
     addCalm: (sec) => {
-      const rounded = Math.round(sec)
+      const rounded = Math.round()
       patch(d => ({ ...d, calmSec: (d.calmSec || 0) + rounded }), {})
       setDays(prev => {
         const today = dayKey()
