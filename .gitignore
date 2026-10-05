@@ -11,3 +11,5 @@ logs/
 *.log
 .tmp-*
 .vercel
+.codex-build/
+output/

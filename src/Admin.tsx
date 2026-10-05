@@ -1,33 +1,13 @@
 import React from 'react'
 import { getErrorLog, clearErrorLog } from './lib/errorlog'
 import { C } from './prefs'
-import { collection, getDocs, limit, query, where } from 'firebase/firestore'
-import { db, auth } from './lib/firebase'
-
-const COLLECTIONS = ['profiles', 'user_preferences', 'daily_records', 'journal_entries', 'habits', 'habit_completions', 'email_verifications']
-
-async function fetchSchemas() {
-  const out: Record<string, { fields: string[]; sample: any; error?: string }> = {}
-  const uid = auth.currentUser?.uid
-  if (!uid) {
-    for (const col of COLLECTIONS) out[col] = { fields: [], sample: null, error: 'Sign in to the app first.' }
-    return out
-  }
-
-  for (const col of COLLECTIONS) {
-    try {
-      const snap = await getDocs(query(collection(db, col), where('user_id', '==', uid), limit(1)))
-      if (snap.empty) {
-        out[col] = { fields: [], sample: null }
-      } else {
-        const data = snap.docs[0].data() as any
-        out[col] = { fields: Object.keys(data), sample: data }
-      }
-    } catch (e: any) {
-      out[col] = { fields: [], sample: null, error: e.message }
-    }
-  }
-  return out
+const SCHEMAS: Record<string, string[]> = {
+  profiles: ['id', 'user_id', 'name', 'email', 'photo_url', 'course', 'year', 'birthday', 'joined'],
+  user_preferences: ['id', 'user_id', 'theme', 'notif_checkin', 'notif_checkin_time', 'notif_streak', 'notif_weekly', 'notif_quiet', 'notif_quiet_start', 'notif_quiet_end', 'a11y_text_size', 'a11y_reduce_motion', 'a11y_contrast'],
+  daily_records: ['id', 'user_id', 'day', 'sleep', 'mood', 'focus_sec', 'calm_sec', 'created_at', 'updated_at'],
+  journal_entries: ['id', 'user_id', 'day', 'content', 'mood', 'created_at', 'updated_at'],
+  habits: ['id', 'user_id', 'label', 'color', 'sort_order', 'created_at'],
+  habit_completions: ['id', 'habit_id', 'user_id', 'day', 'created_at'],
 }
 
 export function AdminGate() {
@@ -71,41 +51,20 @@ export function AdminGate() {
 
 export function AdminPage() {
   const errors = getErrorLog()
-  const [schemas, setSchemas] = React.useState<Record<string, any> | null>(null)
-
-  React.useEffect(() => {
-    fetchSchemas().then(setSchemas).catch(() => setSchemas({}))
-  }, [])
-
   return (
     <div className="min-h-dvh p-6" style={{ background: C.bg, color: C.textPri }}>
       <h1 className="font-serif text-3xl mb-4">Admin</h1>
 
       <section className="mb-8">
         <h2 className="font-serif text-2xl mb-3">Firebase Schemas</h2>
-        {schemas ? (
-          Object.entries(schemas).map(([col, info]) => (
-            <div key={col} className="rounded-2xl p-4 mb-3" style={{ background: C.card }}>
-              <h3 className="text-sm font-medium mb-2" style={{ color: C.amber }}>{col}</h3>
-              {info.error ? (
-                <p className="text-xs" style={{ color: C.coral }}>{info.error}</p>
-              ) : (
-                <>
-                  <p className="text-xs mb-2" style={{ color: C.textSec }}>
-                    Fields: {info.fields.length ? info.fields.join(', ') : 'no documents yet'}
-                  </p>
-                  {info.sample && (
-                    <pre className="text-xs overflow-x-auto p-3 rounded-xl break-words" style={{ background: 'color-mix(in srgb, var(--text) 6%, transparent)' }}>
-                      {JSON.stringify(info.sample, null, 2)}
-                    </pre>
-                  )}
-                </>
-              )}
-            </div>
-          ))
-        ) : (
-          <p style={{ color: C.textSec }}>Loading schemas…</p>
-        )}
+        {Object.entries(SCHEMAS).map(([col, fields]) => (
+          <div key={col} className="rounded-2xl p-4 mb-3" style={{ background: C.card }}>
+            <h3 className="text-sm font-medium mb-2" style={{ color: C.amber }}>{col}</h3>
+            <p className="text-xs" style={{ color: C.textSec }}>
+              Fields: {fields.join(', ')}
+            </p>
+          </div>
+        ))}
       </section>
 
       <section>
