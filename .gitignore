@@ -11,5 +11,6 @@ logs/
 *.log
 .tmp-*
 .vercel
+*.pptx
 .codex-build/
 output/
